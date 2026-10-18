@@ -1,45 +1,203 @@
----
 # yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
-# image will be published to ghcr.io/<user>/<name>
-name: template
-# description will be included in the image's metadata
-description: This is my personal OS image.
+name: ishu-os
+description: "ishu os an os made by ishaq turk"
 
-# the base image to build on top of (FROM) and the version tag to use
+# Base: Universal Blue Silverblue with pre-baked Intel media hardware codecs
 base-image: ghcr.io/ublue-os/silverblue-main
-image-version: latest # You can pin to a specific version of Fedora as well
+image-version: latest
 
-# module configuration, executed in order
-# you can include multiple instances of the same module
 modules:
-  - type: files
-    files:
-      - source: system
-        destination: / # copies files/system/* (* means everything inside it) into your image's root folder /
+  # 1. Core OS Identity (Overrides System Settings & Boot Entries)
+  - type: os-release
+    properties:
+      NAME: "ishu os"
+      ID: "ishuos"
+      ID_LIKE: "fedora"
+      PRETTY_NAME: "ishu os (an os made by ishaq turk)"
+      DEFAULT_HOSTNAME: "ishu-os"
+      HOME_URL: "https://newsbyishaq.com"
+      DOCUMENTATION_URL: "https://newsbyishaq.com"
+      VENDOR_NAME: "Ishaq Turk"
 
+  # 2. De-Bloat & Hardware Power Engine (Intel Integrated Graphics + Ultra Battery)
   - type: dnf
-    repos:
-      copr:
-        - atim/starship
     install:
       packages:
-        - micro
-        - starship
+        - tlp
+        - tlp-rdw
+        - powertop
+        - fastfetch
+        - intel-media-driver
+        - libva-intel-driver
+        - plymouth-plugin-script
     remove:
       packages:
-        # example: removing firefox (in favor of the flatpak)
-        # "firefox" is the main package, "firefox-langpacks" is a dependency
+        # Completely strip out default GNOME bloat, heavy background indexing, & Firefox
         - firefox
-        - firefox-langpacks # also remove firefox dependency (not required for all packages, this is a special case)
+        - firefox-langpacks
+        - gnome-tour
+        - gnome-user-docs
+        - yelp
+        - gnome-software
+        - gnome-boxes
+        -gnome-connections
+        -gnome-maps
+        -gnome-weather
+        -gnome-contacts
+        -gnome-clocks
+        - totem
+        - rhythmbox
 
+  # 3. Signature "Aero Modern" Desktop Engine
+  - type: gnome-extensions
+    install:
+      - Dash to Panel
+      - ArcMenu
+      - Blur my Shell
+      - AppIndicator and KStatusNotifierItem Support
+
+  # 4. Out-of-the-Box Daily Driver Apps (Zero Bloat)
   - type: default-flatpaks
     configurations:
-      - notify: true # Send notification after install/uninstall is finished (true/false)
+      - notify: false
         scope: system
-        # If no repo information is specified, Flathub will be used by default
-        install: # system flatpaks we want all users to have and not remove
-          - org.mozilla.firefox
-          - org.gnome.Loupe
-      - scope: user # Also add Flathub user repo, but no user packages
+        install:
+          - com.brave.Browser
+          - org.videolan.VLC
+          - com.spotify.Client
+          - com.discordapp.Discord
+          - com.mattjakeman.ExtensionManager
 
-  - type: signing # this sets up the proper policy & signing files for signed images to work fully
+  # 5. Lock In Ultra Battery Saver & Mask Conflicting Power Daemons
+  - type: systemd
+    system:
+      enabled:
+        - tlp.service
+      masked:
+        - power-profiles-daemon.service
+        - systemd-rfkill.service
+        - systemd-rfkill.socket
+
+  # 6. Deep System Injection: Boot Menu, Splash Screen, Aero Glass UI, & Intel Tuning
+  - type: script
+    snippets:
+      # --- A. DEEP BOOTLOADER & OS-RELEASE OVERRIDE ---
+      - |
+        cat << 'EOF' > /usr/lib/os-release
+        NAME="ishu os"
+        VERSION="1.0 (Aero Modern)"
+        ID="ishuos"
+        ID_LIKE="fedora"
+        VERSION_ID="41"
+        PRETTY_NAME="ishu os — an os made by ishaq turk"
+        ANSI_COLOR="0;36"
+        LOGO="fedora-logo-icon"
+        CPE_NAME="cpe:/o:ishaqturk:ishuos:1"
+        DEFAULT_HOSTNAME="ishu-os"
+        HOME_URL="https://newsbyishaq.com"
+        VENDOR_NAME="Ishaq Turk"
+        OSTREE_VERSION="ishu os 1.0"
+        EOF
+      - "cp -f /usr/lib/os-release /etc/os-release"
+      - "echo 'ishu os — an os made by ishaq turk' > /etc/issue"
+      - "echo 'ishu os — an os made by ishaq turk' > /etc/issue.net"
+      - "mkdir -p /etc/default"
+      - "printf 'GRUB_TIMEOUT=5\nGRUB_DISTRIBUTOR=\"ishu os\"\nGRUB_DISABLE_SUBMENU=true\nGRUB_TERMINAL_OUTPUT=\"gfxterm\"\nGRUB_CMDLINE_LINUX=\"rhgb quiet i915.enable_fbc=1 i915.enable_psr=1\"\n' > /etc/default/grub"
+
+      # --- B. CUSTOM BOOT SPLASH WATERMARK (PLYMOUTH) ---
+      - |
+        if [ -f /usr/share/plymouth/themes/spinner/spinner.plymouth ]; then
+          sed -i 's/WatermarkHorizontalAlignment=.*/WatermarkHorizontalAlignment=.5/' /usr/share/plymouth/themes/spinner/spinner.plymouth || true
+        fi
+
+      # --- C. ULTRA BATTERY SAVER & INTEL iGPU CONFIG ---
+      - "mkdir -p /etc/tlp.d"
+      - |
+        cat << 'EOF' > /etc/tlp.d/00-ishu-os-battery.conf
+        TLP_ENABLE=1
+        CPU_SCALING_GOVERNOR_ON_AC=performance
+        CPU_SCALING_GOVERNOR_ON_BAT=powersave
+        CPU_ENERGY_PERF_POLICY_ON_AC=balance_performance
+        CPU_ENERGY_PERF_POLICY_ON_BAT=power
+        CPU_BOOST_ON_AC=1
+        CPU_BOOST_ON_BAT=0
+        PLATFORM_PROFILE_ON_AC=balanced
+        PLATFORM_PROFILE_ON_BAT=low-power
+        INTEL_GPU_MIN_FREQ_ON_BAT=100
+        INTEL_GPU_MAX_FREQ_ON_BAT=600
+        INTEL_GPU_BOOST_FREQ_ON_BAT=600
+        WIFI_PWR_ON_BAT=on
+        SOUND_POWER_SAVE_ON_BAT=1
+        RUNTIME_PM_ON_BAT=auto
+        EOF
+
+      # --- D. ORIGINAL "ISHU AERO MODERN" DESKTOP LAYOUT (DCONF DATABASE) ---
+      - "mkdir -p /etc/dconf/profile /etc/dconf/db/local.d"
+      - "printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user"
+      - |
+        cat << 'EOF' > /etc/dconf/db/local.d/01-ishu-os-desktop
+        [org/gnome/shell]
+        enabled-extensions=['dash-to-panel@jderose9.github.com', 'arcmenu@arcmenu.com', 'blur-my-shell@aunetx', 'appindicatorsupport@rgcjonas.gmail.com']
+        favorite-apps=['com.brave.Browser.desktop', 'org.gnome.Ptyxis.desktop', 'org.gnome.Nautilus.desktop', 'org.videolan.VLC.desktop', 'com.spotify.Client.desktop', 'com.discordapp.Discord.desktop']
+
+        [org/gnome/desktop/wm/preferences]
+        button-layout='appmenu:minimize,maximize,close'
+
+        [org/gnome/desktop/interface]
+        color-scheme='prefer-dark'
+        enable-hot-corners=false
+        clock-show-weekday=true
+        show-battery-percentage=true
+
+        [org/gnome/mutter]
+        edge-tiling=true
+        center-new-windows=true
+
+        [org/gnome/shell/extensions/dash-to-panel]
+        panel-positions='{"0":"BOTTOM"}'
+        panel-sizes='{"0":46}'
+        appicon-margin=4
+        appicon-padding=6
+        dot-style-focused='METRO'
+        dot-style-unfocused='DOTS'
+        trans-use-custom-opacity=true
+        trans-panel-opacity=0.35
+        trans-use-dynamic-opacity=true
+        window-preview-title-position='TOP'
+        show-window-previews=true
+
+        [org/gnome/shell/extensions/arcmenu]
+        menu-layout='Eleven'
+        menu-button-icon='Distro_Icon'
+        custom-menu-button-text='ishu os'
+        enable-menu-button-arrow=false
+
+        [org/gnome/shell/extensions/blur-my-shell/panel]
+        blur=true
+        sigma=30
+        brightness=0.65
+        override-background=true
+        style-panel=1
+        EOF
+      - "dconf update"
+
+      # --- E. CUSTOM TERMINAL GREETING (CREDITS TO ISHAQ TURK) ---
+      - |
+        cat << 'EOF' > /etc/profile.d/ishu-os-welcome.sh
+        if [ -t 1 ]; then
+          clear
+          echo -e "\e[1;36m====================================================\e[0m"
+          echo -e "\e[1;37m   _____ _____ _    _ _    _    ____   _____ \e[0m"
+          echo -e "\e[1;37m  |_   _/ ____| |  | | |  | |  / __ \ / ____|\e[0m"
+          echo -e "\e[1;36m    | || (___ | |__| | |  | | | |  | | (___  \e[0m"
+          echo -e "\e[1;36m    | | \___ \|  __  | |  | | | |  | |\___ \ \e[0m"
+          echo -e "\e[1;34m   _| |_____) | |  | | |__| | | |__| |____) |\e[0m"
+          echo -e "\e[1;34m  |_____|_____/|_|  |_|\____/   \____/|_____/ \e[0m"
+          echo -e ""
+          echo -e "\e[1;33m   ishu os — an os made by ishaq turk\e[0m"
+          echo -e "\e[1;36m====================================================\e[0m"
+          fastfetch --structure Title:Separator:OS:Host:Kernel:Uptime:Packages:WM:CPU:GPU:Memory:Battery 2>/dev/null || true
+        fi
+        EOF
+      - "chmod +x /etc/profile.d/ishu-os-welcome.sh"
+      
